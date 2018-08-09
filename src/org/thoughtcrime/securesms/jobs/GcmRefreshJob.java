@@ -32,7 +32,6 @@ import org.thoughtcrime.securesms.PlayServicesProblemActivity;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.dependencies.InjectableType;
 import org.thoughtcrime.securesms.jobmanager.JobParameters;
-import org.thoughtcrime.securesms.jobmanager.requirements.NetworkRequirement;
 import org.thoughtcrime.securesms.notifications.NotificationChannels;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
 import org.whispersystems.libsignal.util.guava.Optional;
@@ -49,15 +48,16 @@ public class GcmRefreshJob extends ContextJob implements InjectableType {
 
   @Inject transient SignalServiceAccountManager textSecureAccountManager;
 
+  public GcmRefreshJob() {
+    super(null, null);
+  }
+
   public GcmRefreshJob(Context context) {
     super(context, JobParameters.newBuilder()
-                                .withRequirement(new NetworkRequirement(context))
+                                .withNetworkRequirement()
                                 .withRetryCount(1)
                                 .create());
   }
-
-  @Override
-  public void onAdded() {}
 
   @Override
   public void onRun() throws Exception {

@@ -24,21 +24,20 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
-import java.util.concurrent.TimeUnit;
 
 public class LocalBackupJob extends ContextJob {
 
   private static final String TAG = LocalBackupJob.class.getSimpleName();
 
+  public LocalBackupJob() {
+    super(null, null);
+  }
+
   public LocalBackupJob(@NonNull Context context) {
     super(context, JobParameters.newBuilder()
                                 .withGroupId("__LOCAL_BACKUP__")
-                                .withWakeLock(true, 10, TimeUnit.SECONDS)
                                 .create());
   }
-
-  @Override
-  public void onAdded() {}
 
   @Override
   public void onRun() throws NoExternalStorageException, IOException {

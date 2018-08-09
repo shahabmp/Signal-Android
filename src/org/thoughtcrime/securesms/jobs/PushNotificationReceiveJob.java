@@ -4,14 +4,12 @@ import android.content.Context;
 
 import org.thoughtcrime.securesms.dependencies.InjectableType;
 import org.thoughtcrime.securesms.jobmanager.JobParameters;
-import org.thoughtcrime.securesms.jobmanager.requirements.NetworkRequirement;
 import org.thoughtcrime.securesms.logging.Log;
 import org.whispersystems.signalservice.api.SignalServiceMessageReceiver;
 import org.whispersystems.signalservice.api.messages.SignalServiceEnvelope;
 import org.whispersystems.signalservice.api.push.exceptions.PushNetworkException;
 
 import java.io.IOException;
-import java.util.concurrent.TimeUnit;
 
 import javax.inject.Inject;
 
@@ -21,15 +19,16 @@ public class PushNotificationReceiveJob extends PushReceivedJob implements Injec
 
   @Inject transient SignalServiceMessageReceiver receiver;
 
-  public PushNotificationReceiveJob(Context context) {
-    super(context, JobParameters.newBuilder()
-                                .withRequirement(new NetworkRequirement(context))
-                                .withGroupId("__notification_received")
-                                .withWakeLock(true, 30, TimeUnit.SECONDS).create());
+  public PushNotificationReceiveJob() {
+    super(null, null);
   }
 
-  @Override
-  public void onAdded() {}
+  public PushNotificationReceiveJob(Context context) {
+    super(context, JobParameters.newBuilder()
+                                .withNetworkRequirement()
+                                .withGroupId("__notification_received")
+                                .create());
+  }
 
   @Override
   public void onRun() throws IOException {

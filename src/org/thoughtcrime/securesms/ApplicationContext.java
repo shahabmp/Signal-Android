@@ -68,6 +68,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import androidx.work.WorkManager;
 import dagger.ObjectGraph;
 
 /**
@@ -164,16 +165,7 @@ public class ApplicationContext extends MultiDexApplication implements Dependenc
   }
 
   private void initializeJobManager() {
-    this.jobManager = JobManager.newBuilder(this)
-                                .withName("TextSecureJobs")
-                                .withDependencyInjector(this)
-                                .withJobSerializer(new JavaJobSerializer())
-                                .withRequirementProviders(new MasterSecretRequirementProvider(this),
-                                                          new ServiceRequirementProvider(this),
-                                                          new NetworkRequirementProvider(this),
-                                                          new SqlCipherMigrationRequirementProvider())
-                                .withConsumerThreads(5)
-                                .build();
+    this.jobManager = new JobManager(this, WorkManager.getInstance());
   }
 
   private void initializeDependencyInjection() {

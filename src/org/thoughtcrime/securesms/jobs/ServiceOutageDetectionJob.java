@@ -6,7 +6,6 @@ import org.greenrobot.eventbus.EventBus;
 import org.thoughtcrime.securesms.BuildConfig;
 import org.thoughtcrime.securesms.events.ReminderUpdateEvent;
 import org.thoughtcrime.securesms.jobmanager.JobParameters;
-import org.thoughtcrime.securesms.jobmanager.requirements.NetworkRequirement;
 import org.thoughtcrime.securesms.logging.Log;
 import org.thoughtcrime.securesms.transport.RetryLaterException;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
@@ -22,10 +21,14 @@ public class ServiceOutageDetectionJob extends ContextJob {
   private static final String IP_FAILURE = "127.0.0.2";
   private static final long   CHECK_TIME = 1000 * 60;
 
+  public ServiceOutageDetectionJob() {
+    super(null, null);
+  }
+
   public ServiceOutageDetectionJob(Context context) {
     super(context, new JobParameters.Builder()
                                     .withGroupId(ServiceOutageDetectionJob.class.getSimpleName())
-                                    .withRequirement(new NetworkRequirement(context))
+                                    .withNetworkRequirement()
                                     .withRetryCount(5)
                                     .create());
   }

@@ -8,12 +8,10 @@ import org.thoughtcrime.securesms.database.Address;
 import org.thoughtcrime.securesms.database.DatabaseFactory;
 import org.thoughtcrime.securesms.database.GroupDatabase;
 import org.thoughtcrime.securesms.dependencies.InjectableType;
-import org.thoughtcrime.securesms.jobs.requirements.MasterSecretRequirement;
 import org.thoughtcrime.securesms.logging.Log;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.util.GroupUtil;
 import org.thoughtcrime.securesms.jobmanager.JobParameters;
-import org.thoughtcrime.securesms.jobmanager.requirements.NetworkRequirement;
 import org.whispersystems.libsignal.util.guava.Optional;
 import org.whispersystems.signalservice.api.SignalServiceMessageSender;
 import org.whispersystems.signalservice.api.crypto.UntrustedIdentityException;
@@ -41,12 +39,15 @@ public class MultiDeviceGroupUpdateJob extends MasterSecretJob implements Inject
 
   @Inject transient SignalServiceMessageSender messageSender;
 
+  public MultiDeviceGroupUpdateJob() {
+    super(null, null);
+  }
+
   public MultiDeviceGroupUpdateJob(Context context) {
     super(context, JobParameters.newBuilder()
-                                .withRequirement(new NetworkRequirement(context))
-                                .withRequirement(new MasterSecretRequirement(context))
+                                .withNetworkRequirement()
+                                .withMasterSecretRequirement()
                                 .withGroupId(MultiDeviceGroupUpdateJob.class.getSimpleName())
-                                .withPersistence()
                                 .create());
   }
 
@@ -98,11 +99,6 @@ public class MultiDeviceGroupUpdateJob extends MasterSecretJob implements Inject
   public boolean onShouldRetryThrowable(Exception exception) {
     if (exception instanceof PushNetworkException) return true;
     return false;
-  }
-
-  @Override
-  public void onAdded() {
-
   }
 
   @Override

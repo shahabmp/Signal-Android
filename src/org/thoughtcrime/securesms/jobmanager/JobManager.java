@@ -1,252 +1,107 @@
-/**
- * Copyright (C) 2014 Open Whisper Systems
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
 package org.thoughtcrime.securesms.jobmanager;
 
+import android.arch.lifecycle.LiveData;
 import android.content.Context;
-import android.os.PowerManager;
+import android.support.annotation.NonNull;
 
-import org.thoughtcrime.securesms.jobmanager.dependencies.AggregateDependencyInjector;
-import org.thoughtcrime.securesms.jobmanager.dependencies.DependencyInjector;
-import org.thoughtcrime.securesms.jobmanager.persistence.JobSerializer;
-import org.thoughtcrime.securesms.jobmanager.persistence.PersistentStorage;
-import org.thoughtcrime.securesms.jobmanager.requirements.RequirementListener;
-import org.thoughtcrime.securesms.jobmanager.requirements.RequirementProvider;
-import org.thoughtcrime.securesms.logging.Log;
-
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.TimeUnit;
 
-/**
- * A JobManager allows you to enqueue {@link org.thoughtcrime.securesms.jobmanager.Job} tasks
- * that are executed once a Job's {@link org.thoughtcrime.securesms.jobmanager.requirements.Requirement}s
- * are met.
- */
-public class JobManager implements RequirementListener {
+import androidx.work.BackoffPolicy;
+import androidx.work.Constraints;
+import androidx.work.Data;
+import androidx.work.ExistingWorkPolicy;
+import androidx.work.NetworkType;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
 
-  private final JobQueue      jobQueue           = new JobQueue();
-  private final Executor      eventExecutor      = Executors.newSingleThreadExecutor();
-  private final AtomicBoolean hasLoadedEncrypted = new AtomicBoolean(false);
+public class JobManager {
 
-  private final Context                     context;
-  private final PersistentStorage           persistentStorage;
-  private final List<RequirementProvider>   requirementProviders;
-  private final AggregateDependencyInjector dependencyInjector;
+  private static final Constraints NETWORK_CONSTRAINT = new Constraints.Builder()
+                                                                       .setRequiredNetworkType(NetworkType.CONNECTED)
+                                                                       .build();
 
-  private JobManager(Context context, String name,
-                     List<RequirementProvider> requirementProviders,
-                     DependencyInjector dependencyInjector,
-                     JobSerializer jobSerializer, int consumers)
-  {
-    this.context              = context;
-    this.dependencyInjector   = new AggregateDependencyInjector(dependencyInjector);
-    this.persistentStorage    = new PersistentStorage(context, name, jobSerializer, this.dependencyInjector);
-    this.requirementProviders = requirementProviders;
+  private final Executor executor = Executors.newSingleThreadExecutor();
 
-    eventExecutor.execute(new LoadTask(null));
+  private final Context     context;
+  private final WorkManager workManager;
 
-    if (requirementProviders != null && !requirementProviders.isEmpty()) {
-      for (RequirementProvider provider : requirementProviders) {
-        provider.setListener(this);
+  public JobManager(@NonNull Context context, @NonNull WorkManager workManager) {
+    this.context      = context.getApplicationContext();
+    this.workManager  = workManager;
+  }
+
+  public void add(Job job) {
+    executor.execute(() -> {
+      Data.Builder dataBuilder = new Data.Builder().putInt(Job.KEY_RETRY_COUNT, getRetryCount(job))
+                                                   .putLong(Job.KEY_RETRY_UNTIL, getRetryUntil(job))
+                                                   .putBoolean(Job.KEY_REQUIRES_MASTER_SECRET, getRequiresMasterSecret(job))
+                                                   .putBoolean(Job.KEY_REQUIRES_SQLCIPHER, getRequiresSqlCipher(job));
+      Data data = job.serialize(dataBuilder);
+
+      OneTimeWorkRequest.Builder requestBuilder = new OneTimeWorkRequest.Builder(job.getClass())
+                                                                        .setInputData(data)
+                                                                        .setBackoffCriteria(BackoffPolicy.LINEAR, OneTimeWorkRequest.MIN_BACKOFF_MILLIS, TimeUnit.MILLISECONDS);
+
+      if (requiresNetwork(job)) {
+        requestBuilder.setConstraints(NETWORK_CONSTRAINT);
       }
-    }
 
-    for (int i=0;i<consumers;i++) {
-      new JobConsumer("JobConsumer-" + i, jobQueue, persistentStorage).start();
-    }
-  }
+      OneTimeWorkRequest request = requestBuilder.build();
 
-  /**
-   * @param context An Android {@link android.content.Context}.
-   * @return a {@link org.thoughtcrime.securesms.jobmanager.JobManager.Builder} used to construct a JobManager.
-   */
-  public static Builder newBuilder(Context context) {
-    return new Builder(context);
-  }
+      job.onAdded();
 
-  public void setEncryptionKeys(EncryptionKeys keys) {
-    if (hasLoadedEncrypted.compareAndSet(false, true)) {
-      eventExecutor.execute(new LoadTask(keys));
-    }
-  }
-
-  /**
-   * Queue a {@link org.thoughtcrime.securesms.jobmanager.Job} to be executed.
-   *
-   * @param job The Job to be executed.
-   */
-  public void add(final Job job) {
-    if (job.needsWakeLock()) {
-      job.setWakeLock(acquireWakeLock(context, job.toString(), job.getWakeLockTimeout()));
-    }
-
-    eventExecutor.execute(new Runnable() {
-      @Override
-      public void run() {
-        try {
-          if (job.isPersistent()) {
-            persistentStorage.store(job);
-          }
-
-          dependencyInjector.injectDependencies(context, job);
-
-          job.onAdded();
-          jobQueue.add(job);
-        } catch (IOException e) {
-          Log.w("JobManager", e);
-          job.onCanceled();
-        }
+      String groupId = getGroupId(job);
+      if (groupId != null) {
+        workManager.beginUniqueWork(groupId, ExistingWorkPolicy.APPEND, request).enqueue();
+      } else {
+        workManager.beginWith(request).enqueue();
       }
     });
   }
 
-  @Override
-  public void onRequirementStatusChanged() {
-    eventExecutor.execute(new Runnable() {
-      @Override
-      public void run() {
-        jobQueue.onRequirementStatusChanged();
-      }
-    });
+  private int getRetryCount(Job job) {
+    if (job.getJobParameters() != null) {
+      return job.getJobParameters().getRetryCount();
+    }
+    return 0;
   }
 
-  private PowerManager.WakeLock acquireWakeLock(Context context, String name, long timeout) {
-    PowerManager          powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
-    PowerManager.WakeLock wakeLock     = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, name);
-
-    if (timeout == 0) wakeLock.acquire();
-    else              wakeLock.acquire(timeout);
-
-    return wakeLock;
+  private long getRetryUntil(Job job) {
+    if (job.getJobParameters() != null) {
+      return job.getJobParameters().getRetryUntil();
+    }
+    return 0;
   }
 
-  private class LoadTask implements Runnable {
-
-    private final EncryptionKeys keys;
-
-    public LoadTask(EncryptionKeys keys) {
-      this.keys = keys;
+  private boolean getRequiresMasterSecret(Job job) {
+    if (job.getJobParameters() != null) {
+      return job.getJobParameters().requiresMasterSecret();
     }
-
-    @Override
-    public void run() {
-      List<Job> pendingJobs;
-
-      if (keys == null) pendingJobs = persistentStorage.getAllUnencrypted();
-      else              pendingJobs = persistentStorage.getAllEncrypted(keys);
-
-      jobQueue.addAll(pendingJobs);
-    }
+    return false;
   }
 
-  public static class Builder {
-    private final Context                   context;
-    private       String                    name;
-    private       List<RequirementProvider> requirementProviders;
-    private       DependencyInjector        dependencyInjector;
-    private       JobSerializer             jobSerializer;
-    private       int                       consumerThreads;
-
-    Builder(Context context) {
-      this.context         = context;
-      this.consumerThreads = 5;
+  private boolean getRequiresSqlCipher(Job job) {
+    if (job.getJobParameters() != null) {
+      return job.getJobParameters().requiresSqlCipher();
     }
+    return false;
+  }
 
-    /**
-     * A name for the {@link org.thoughtcrime.securesms.jobmanager.JobManager}. This is a required parameter,
-     * and is linked to the durable queue used by persistent jobs.
-     *
-     * @param name The name for the JobManager to build.
-     * @return The builder.
-     */
-    public Builder withName(String name) {
-      this.name = name;
-      return this;
+  private boolean requiresNetwork(Job job) {
+    if (job.getJobParameters() != null) {
+      return job.getJobParameters().requiresNetwork();
     }
+    return false;
+  }
 
-    /**
-     * The {@link org.thoughtcrime.securesms.jobmanager.requirements.RequirementProvider}s to register with this
-     * JobManager.  Optional. Each {@link org.thoughtcrime.securesms.jobmanager.requirements.Requirement} an
-     * enqueued Job depends on should have a matching RequirementProvider registered here.
-     *
-     * @param requirementProviders The RequirementProviders
-     * @return The builder.
-     */
-    public Builder withRequirementProviders(RequirementProvider... requirementProviders) {
-      this.requirementProviders = Arrays.asList(requirementProviders);
-      return this;
+  private String getGroupId(Job job) {
+    if (job.getJobParameters() != null) {
+      return job.getJobParameters().getGroupId();
     }
-
-    /**
-     * The {@link org.thoughtcrime.securesms.jobmanager.dependencies.DependencyInjector} to use for injecting
-     * dependencies into {@link Job}s. Optional. Injection occurs just before a Job's onAdded() callback, or
-     * after deserializing a persistent job.
-     *
-     * @param dependencyInjector The injector to use.
-     * @return The builder.
-     */
-    public Builder withDependencyInjector(DependencyInjector dependencyInjector) {
-      this.dependencyInjector = dependencyInjector;
-      return this;
-    }
-
-    /**
-     * The {@link org.thoughtcrime.securesms.jobmanager.persistence.JobSerializer} to use for persistent Jobs.
-     * Required if persistent Jobs are used.
-     *
-     * @param jobSerializer The serializer to use.
-     * @return The builder.
-     */
-    public Builder withJobSerializer(JobSerializer jobSerializer) {
-      this.jobSerializer = jobSerializer;
-      return this;
-    }
-
-    /**
-     * Set the number of threads dedicated to consuming Jobs from the queue and executing them.
-     *
-     * @param consumerThreads The number of threads.
-     * @return The builder.
-     */
-    public Builder withConsumerThreads(int consumerThreads) {
-      this.consumerThreads = consumerThreads;
-      return this;
-    }
-
-    /**
-     * @return A constructed JobManager.
-     */
-    public JobManager build() {
-      if (name == null) {
-        throw new IllegalArgumentException("You must specify a name!");
-      }
-
-      if (requirementProviders == null) {
-        requirementProviders = new LinkedList<>();
-      }
-
-      return new JobManager(context, name, requirementProviders,
-                            dependencyInjector, jobSerializer,
-                            consumerThreads);
-    }
+    return null;
   }
 
 }

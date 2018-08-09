@@ -8,8 +8,6 @@ import org.thoughtcrime.securesms.crypto.MasterSecret;
 import org.thoughtcrime.securesms.crypto.PreKeyUtil;
 import org.thoughtcrime.securesms.dependencies.InjectableType;
 import org.thoughtcrime.securesms.jobmanager.JobParameters;
-import org.thoughtcrime.securesms.jobmanager.requirements.NetworkRequirement;
-import org.thoughtcrime.securesms.jobs.requirements.MasterSecretRequirement;
 import org.thoughtcrime.securesms.logging.Log;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
 import org.whispersystems.libsignal.IdentityKeyPair;
@@ -32,18 +30,17 @@ public class RefreshPreKeysJob extends MasterSecretJob implements InjectableType
 
   @Inject transient SignalServiceAccountManager accountManager;
 
+  public RefreshPreKeysJob() {
+    super(null, null);
+  }
+
   public RefreshPreKeysJob(Context context) {
     super(context, JobParameters.newBuilder()
                                 .withGroupId(RefreshPreKeysJob.class.getSimpleName())
-                                .withRequirement(new NetworkRequirement(context))
-                                .withRequirement(new MasterSecretRequirement(context))
+                                .withNetworkRequirement()
+                                .withMasterSecretRequirement()
                                 .withRetryCount(5)
                                 .create());
-  }
-
-  @Override
-  public void onAdded() {
-
   }
 
   @Override

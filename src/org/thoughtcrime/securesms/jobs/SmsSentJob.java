@@ -12,23 +12,31 @@ import org.thoughtcrime.securesms.database.NoSuchMessageException;
 import org.thoughtcrime.securesms.database.SmsDatabase;
 import org.thoughtcrime.securesms.database.model.SmsMessageRecord;
 import org.thoughtcrime.securesms.jobmanager.JobParameters;
-import org.thoughtcrime.securesms.jobs.requirements.MasterSecretRequirement;
 import org.thoughtcrime.securesms.notifications.MessageNotifier;
 import org.thoughtcrime.securesms.service.SmsDeliveryListener;
+
+import androidx.work.Data;
 
 public class SmsSentJob extends MasterSecretJob {
 
   private static final long   serialVersionUID = -2624694558755317560L;
   private static final String TAG              = SmsSentJob.class.getSimpleName();
 
-  private final long   messageId;
-  private final String action;
-  private final int    result;
+  private static final String KEY_MESSAGE_ID = "message_id";
+  private static final String KEY_ACTION     = "action";
+  private static final String KEY_RESULT     = "result";
+
+  private long   messageId;
+  private String action;
+  private int    result;
+
+  public SmsSentJob() {
+    super(null, null);
+  }
 
   public SmsSentJob(Context context, long messageId, String action, int result) {
     super(context, JobParameters.newBuilder()
-                                .withPersistence()
-                                .withRequirement(new MasterSecretRequirement(context))
+                                .withMasterSecretRequirement()
                                 .create());
 
     this.messageId = messageId;
@@ -37,8 +45,18 @@ public class SmsSentJob extends MasterSecretJob {
   }
 
   @Override
-  public void onAdded() {
+  protected void initialize(Data data) {
+    messageId = data.getLong(KEY_MESSAGE_ID, -1);
+    action    = data.getString(KEY_ACTION);
+    result    = data.getInt(KEY_RESULT, -1);
+  }
 
+  @Override
+  protected Data serialize(Data.Builder dataBuilder) {
+    return dataBuilder.putLong(KEY_MESSAGE_ID, messageId)
+                      .putString(KEY_ACTION, action)
+                      .putInt(KEY_RESULT, result)
+                      .build();
   }
 
   @Override

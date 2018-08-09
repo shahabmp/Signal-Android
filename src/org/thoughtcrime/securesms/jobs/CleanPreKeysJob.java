@@ -1,13 +1,13 @@
 package org.thoughtcrime.securesms.jobs;
 
 import android.content.Context;
+
 import org.thoughtcrime.securesms.logging.Log;
 
 import org.thoughtcrime.securesms.crypto.MasterSecret;
 import org.thoughtcrime.securesms.crypto.PreKeyUtil;
 import org.thoughtcrime.securesms.dependencies.InjectableType;
 import org.thoughtcrime.securesms.jobmanager.JobParameters;
-import org.thoughtcrime.securesms.jobs.requirements.MasterSecretRequirement;
 import org.whispersystems.libsignal.InvalidKeyIdException;
 import org.whispersystems.libsignal.state.SignedPreKeyRecord;
 import org.whispersystems.libsignal.state.SignedPreKeyStore;
@@ -35,17 +35,16 @@ public class CleanPreKeysJob extends MasterSecretJob implements InjectableType {
   @Inject transient SignalServiceAccountManager accountManager;
   @Inject transient SignedPreKeyStoreFactory signedPreKeyStoreFactory;
 
+  public CleanPreKeysJob() {
+    super(null, null);
+  }
+
   public CleanPreKeysJob(Context context) {
     super(context, JobParameters.newBuilder()
                                 .withGroupId(CleanPreKeysJob.class.getSimpleName())
-                                .withRequirement(new MasterSecretRequirement(context))
+                                .withMasterSecretRequirement()
                                 .withRetryCount(5)
                                 .create());
-  }
-
-  @Override
-  public void onAdded() {
-
   }
 
   @Override

@@ -27,8 +27,6 @@ import org.thoughtcrime.securesms.database.MmsDatabase;
 import org.thoughtcrime.securesms.database.NoSuchMessageException;
 import org.thoughtcrime.securesms.database.ThreadDatabase;
 import org.thoughtcrime.securesms.jobmanager.JobParameters;
-import org.thoughtcrime.securesms.jobmanager.requirements.NetworkRequirement;
-import org.thoughtcrime.securesms.jobs.requirements.MasterSecretRequirement;
 import org.thoughtcrime.securesms.mms.CompatMmsConnection;
 import org.thoughtcrime.securesms.mms.MediaConstraints;
 import org.thoughtcrime.securesms.mms.MmsException;
@@ -48,6 +46,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+import androidx.work.Data;
 
 public class MmsSendJob extends SendJob {
 
@@ -55,22 +56,33 @@ public class MmsSendJob extends SendJob {
 
   private static final String TAG = MmsSendJob.class.getSimpleName();
 
-  private final long messageId;
+  private static final String KEY_MESSAGE_ID = "message_id";
+
+  private long messageId;
+
+  public MmsSendJob() {
+    super(null, null);
+  }
 
   public MmsSendJob(Context context, long messageId) {
     super(context, JobParameters.newBuilder()
                                 .withGroupId("mms-operation")
-                                .withRequirement(new NetworkRequirement(context))
-                                .withRequirement(new MasterSecretRequirement(context))
-                                .withPersistence()
+                                .withNetworkRequirement()
+                                .withMasterSecretRequirement()
+                                .withRetryDuration(TimeUnit.DAYS.toMillis(1))
                                 .create());
 
     this.messageId = messageId;
   }
 
   @Override
-  public void onAdded() {
-    Log.i(TAG, "onAdded() messageId: " + messageId);
+  protected void initialize(Data data) {
+    messageId = data.getLong(KEY_MESSAGE_ID, -1);
+  }
+
+  @Override
+  protected Data serialize(Data.Builder dataBuilder) {
+    return dataBuilder.putLong(KEY_MESSAGE_ID, messageId).build();
   }
 
   @Override

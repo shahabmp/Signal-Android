@@ -16,7 +16,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import org.thoughtcrime.securesms.BuildConfig;
 import org.thoughtcrime.securesms.jobmanager.JobParameters;
-import org.thoughtcrime.securesms.jobmanager.requirements.NetworkRequirement;
 import org.thoughtcrime.securesms.service.UpdateApkReadyListener;
 import org.thoughtcrime.securesms.util.FileUtils;
 import org.thoughtcrime.securesms.util.Hex;
@@ -26,7 +25,6 @@ import org.thoughtcrime.securesms.util.TextSecurePreferences;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.security.MessageDigest;
-import java.util.concurrent.TimeUnit;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -36,17 +34,17 @@ public class UpdateApkJob extends ContextJob {
 
   private static final String TAG = UpdateApkJob.class.getSimpleName();
 
+  public UpdateApkJob() {
+    super(null, null);
+  }
+
   public UpdateApkJob(Context context) {
     super(context, JobParameters.newBuilder()
                                 .withGroupId(UpdateApkJob.class.getSimpleName())
-                                .withRequirement(new NetworkRequirement(context))
-                                .withWakeLock(true, 30, TimeUnit.SECONDS)
+                                .withNetworkRequirement()
                                 .withRetryCount(2)
                                 .create());
   }
-
-  @Override
-  public void onAdded() {}
 
   @Override
   public void onRun() throws IOException, PackageManager.NameNotFoundException {
