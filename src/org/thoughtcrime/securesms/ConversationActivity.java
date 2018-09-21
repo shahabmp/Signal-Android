@@ -2224,12 +2224,14 @@ public class ConversationActivity extends PassphraseRequiredActionBarActivity
       inputPanel.setQuote(GlideApp.with(this),
                           messageRecord.getDateSent(),
                           author,
+                          recipient,
                           body,
                           slideDeck);
     } else {
       inputPanel.setQuote(GlideApp.with(this),
                           messageRecord.getDateSent(),
                           author,
+                          recipient,
                           messageRecord.getBody(),
                           messageRecord.isMms() ? ((MmsMessageRecord) messageRecord).getSlideDeck() : new SlideDeck());
     }
